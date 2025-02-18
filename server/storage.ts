@@ -1,4 +1,6 @@
-import { type Todo, type InsertTodo } from "@shared/schema";
+import { type Todo, type InsertTodo, todos } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getTodos(): Promise<Todo[]>;
@@ -7,38 +9,31 @@ export interface IStorage {
   deleteTodo(id: number): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private todos: Map<number, Todo>;
-  private currentId: number;
-
-  constructor() {
-    this.todos = new Map();
-    this.currentId = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   async getTodos(): Promise<Todo[]> {
-    return Array.from(this.todos.values());
+    return await db.select().from(todos);
   }
 
   async createTodo(insertTodo: InsertTodo): Promise<Todo> {
-    const id = this.currentId++;
-    const todo: Todo = { ...insertTodo, id };
-    this.todos.set(id, todo);
+    const [todo] = await db
+      .insert(todos)
+      .values(insertTodo)
+      .returning();
     return todo;
   }
 
   async updateTodo(id: number, completed: boolean): Promise<Todo | undefined> {
-    const todo = this.todos.get(id);
-    if (!todo) return undefined;
-    
-    const updatedTodo = { ...todo, completed };
-    this.todos.set(id, updatedTodo);
-    return updatedTodo;
+    const [todo] = await db
+      .update(todos)
+      .set({ completed })
+      .where(eq(todos.id, id))
+      .returning();
+    return todo;
   }
 
   async deleteTodo(id: number): Promise<void> {
-    this.todos.delete(id);
+    await db.delete(todos).where(eq(todos.id, id));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
